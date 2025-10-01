@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Call Main Number (Server-initiated)</title>
+    <style>
+        body {
+            font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+            margin: 24px;
+        }
+
+        input,
+        button {
+            padding: 10px 14px;
+            margin: 6px 0;
+        }
+
+        #log {
+            background: #111;
+            color: #eee;
+            padding: 12px;
+            min-height: 150px;
+            white-space: pre-wrap;
+            border-radius: 8px;
+        }
+    </style>
+
+    <script src="
+https://cdn.jsdelivr.net/npm/@twilio/voice-sdk@2.15.0/dist/twilio.min.js
+"></script>
+</head>
+
+<body>
+    <h2>Twilio Call + Transcription Logger</h2>
+    <button id="init">Init Device</button>
+    <button id="call">Call</button>
+    <button id="hangup" disabled>Hang up</button>
+    <div id="log"></div>
+
+    <button id="acceptBtn" type="button">Accept</button>
+    <button id="rejectBtn" type="button">Reject</button>
+
+    <script>
+        let device = null;
+        let connection = null;
+        let lastCallSid = null;
+        let initialized = false; // guard
+
+        const $ = (id) => document.getElementById(id);
+        const log = (...a) => { $('log').textContent += a.join(' ') + '\n'; };
+
+        $('init').addEventListener('click', async (e) => {
+            e.preventDefault();
+            if (initialized) { log('Already initialized'); return; }
+
+            try {
+                const r = await fetch('http://localhost:7000/token');
+                const { token } = await r.json();
+
+                device = new Twilio.Device(token, { logLevel: 'info' });
+
+                device.on('registered', () => log('Device registered'));
+                device.on('unregistered', () => log('Device unregistered'));
+                device.on('error', (err) => log('Device error:', err?.message || err));
+                device.on('tokenWillExpire', async () => {
+                    try { const r = await fetch('http://localhost:7000/token'); const d = await r.json(); await device.updateToken(d.token); log('Token refreshed'); } catch (e) { log('Token refresh failed', e); }
+                });
+
+                device.on('incoming', (conn) => {
+                    log('Incoming call…');
+                    connection = conn;
+
+                    // Enable Accept/Reject
+                    $('acceptBtn').disabled = false;
+                    $('rejectBtn').disabled = false;
+
+                    // Only bind once per incoming
+                    $('acceptBtn').onclick = () => {
+                        $('acceptBtn').disabled = true;
+                        $('rejectBtn').disabled = true;
+                        conn.accept();
+                        log('Call accepted');
+                    };
+                    $('rejectBtn').onclick = () => {
+                        $('acceptBtn').disabled = true;
+                        $('rejectBtn').disabled = true;
+                        conn.reject();
+                        log('Call rejected');
+                        connection = null;
+                    };
+
+                    conn.on('accept', () => log('In call'));
+                    conn.on('disconnect', () => { log('Call ended'); connection = null; $('hangup').disabled = true; });
+                    conn.on('error', (e) => log('Conn error:', e?.message || e));
+                });
+
+                await device.register();
+                initialized = true; // prevent double init
+            } catch (err) {
+                log('Init error:', err?.message || err);
+            }
+        });
+
+        $('call').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                const res = await fetch('http://localhost:7000/dial', { method: 'POST' });
+                const data = await res.json();
+                if (!res.ok) throw new Error(data.error || 'Dial failed');
+                lastCallSid = data.callSid;
+                $('hangup').disabled = false;
+                log('Dial requested', JSON.stringify(data));
+            } catch (err) {
+                log('Dial error:', err?.message || err);
+            }
+        });
+
+        $('hangup').addEventListener('click', async (e) => {
+            e.preventDefault();
+            try {
+                if (connection) connection.disconnect();
+                if (lastCallSid) {
+                    await fetch('http://localhost:7000/hangup', {
+                        method: 'POST', headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ callSid: lastCallSid })
+                    });
+                    log('Hangup requested');
+                }
+                $('hangup').disabled = true;
+            } catch (err) {
+                log('Hangup error:', err?.message || err);
+            }
+        });
+    </script>
+
+</body>
+
+</html>
