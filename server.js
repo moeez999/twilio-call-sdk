@@ -1,7 +1,7 @@
 /**
  * Twilio Voice server — Outbound (server-initiated) + Inbound (bridge to Client) + Transcription logging
  */
-require("dotenv").config();
+// require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
 const fs = require("fs");
