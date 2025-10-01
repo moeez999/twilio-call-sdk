@@ -60,8 +60,8 @@ app.post("/dial", async (req, res) => {
     const call = await twilio.calls.create({
       from,
       to,
-      url: "https://6a193b04b364.ngrok-free.app/twiml/inbound",
-      statusCallback: "https://6a193b04b364.ngrok-free.app/status-events",
+      url: "https://twilio-call-sdk.onrender.com/twiml/inbound",
+      statusCallback: "https://twilio-call-sdk.onrender.com/status-events",
       statusCallbackEvent: ["initiated", "ringing", "answered", "completed"],
     });
 
